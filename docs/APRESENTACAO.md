@@ -1,77 +1,50 @@
-# Roteiro da apresentação — arquitetura MVSC
+# Presentation Guide - Clean Architecture
 
-## 1. Problema
+## 1. Problem
 
-A instituição precisa permitir que professores reservem equipamentos para aulas sem conflitos de equipamento, sala e horário.
+The API allows professors to reserve rooms and equipment for academic classes
+without overlapping reservations.
 
-## 2. Arquitetura
+## 2. Architecture
 
-O projeto foi organizado em MVSC:
+The project uses four explicit layers:
 
-- `model`: entidades e invariantes do domínio;
-- `view`: requests e responses da API;
-- `service`: casos de uso, regras de aplicação e transações;
-- `controller`: entrada HTTP e códigos de resposta;
-- `repository`: contratos de persistência;
-- `infrastructure`: implementação JPA;
-- `exception`: erros de negócio;
-- `config`: configurações técnicas.
+- `domain`: framework-free entities, value objects, exceptions, repository ports, and business policies;
+- `application`: records, mappers, use-case input ports, outbound ports, and orchestration;
+- `infrastructure`: JPA entities, Spring Data repositories, adapters, Flyway, configuration, and error handling;
+- `presentation`: REST controllers that depend only on application ports and DTOs.
 
-## 3. Separação por responsabilidade
+The dependency direction points inward. ArchUnit verifies this relationship and
+rejects framework dependencies from the domain.
 
-Cada recurso possui seu próprio controller e service:
+## 3. Reservation Flow
 
-- `ProfessorController` → `ProfessorService`
-- `SalaController` → `SalaService`
-- `EquipamentoController` → `EquipamentoService`
-- `ReservaController` → `ReservaService`
+1. The controller validates request shape with Bean Validation.
+2. The create-reservation use case builds a domain `TimeWindow`.
+3. The domain policy checks the seven-day advance notice.
+4. The use case loads professor, room, and equipment through domain repository ports.
+5. The reservation aggregate checks required values and active equipment.
+6. One reusable availability checker evaluates room and equipment windows.
+7. The persistence adapter maps the domain aggregate to separate JPA entities.
+8. The controller returns a response record without exposing JPA entities.
 
-Assim, não existe mais um controller genérico responsável por vários recursos.
+## 4. Error Handling
 
-## 4. Fluxo de reserva
+`GlobalExceptionHandler` returns RFC 7807 `ProblemDetail` responses:
 
-1. Cliente envia `POST /reservas`.
-2. `ReservaController` valida o request.
-3. `ReservaService` carrega professor, sala e equipamentos.
-4. O service valida antecedência e conflitos.
-5. `Reserva` valida suas próprias invariantes.
-6. O repository persiste a entidade.
-7. O service devolve `ReservaResponse`.
-8. O controller retorna HTTP 201.
+- HTTP 400 for request shape and invalid time ranges;
+- HTTP 404 for missing resources;
+- HTTP 409 for availability, advance-notice, inactive-equipment, and persistence conflicts.
 
-## 5. Clean Code e SOLID
+Each domain rule has a specific machine-readable type and human-readable detail.
 
-- Responsabilidade única por classe.
-- Inversão de dependência através das interfaces de service e repository.
-- Controllers sem regra de negócio.
-- Services sem preocupação com detalhes HTTP.
-- Model sem dependência da camada web.
-- DTOs impedem exposição direta das entidades.
-- Dependências injetadas por construtor.
-- Métodos pequenos e nomeados de acordo com sua intenção.
-- `Clock` injetável para regras de data e testes determinísticos.
+## 5. Persistence
 
-## 6. Tratamento de erros
+Flyway owns the schema. `test` uses H2 migrations and the default/`prod` profiles
+use Oracle migrations. Oracle connection values are supplied through environment
+variables. JPA is configured only to validate the migrated schema.
 
-`ApiExceptionHandler` centraliza:
+## 6. Tests
 
-- HTTP 400 para validação e regras de negócio;
-- HTTP 404 para recursos inexistentes;
-- HTTP 409 para violações de unicidade/persistência.
-
-A API utiliza o mesmo formato de resposta de erro.
-
-## 7. Testes
-
-Os testes unitários cobrem:
-
-- reserva válida;
-- antecedência insuficiente;
-- equipamento inativo;
-- conflito de equipamento;
-- conflito de sala;
-- horário inválido no Model.
-
-## 8. Resultado
-
-A refatoração reduz acoplamento e torna cada parte do sistema evolutiva de forma independente, sem misturar responsabilidades de HTTP, negócio, persistência e representação de dados.
+The suite includes framework-free domain rule tests, Mockito use-case tests, H2
+MockMvc integration tests, and the ArchUnit `CleanArchitectureTest`.

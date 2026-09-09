@@ -1,160 +1,86 @@
-# Sistema de Reserva de Equipamentos — Spring Boot / MVSC
+# Equipment Reservation API
 
-API REST para cadastro de professores, salas e equipamentos e criação de reservas acadêmicas sem conflitos.
+Spring Boot 4.1 API for professors reserving rooms and equipment. The project uses
+Clean Architecture, Java 21, Spring Data JPA, Flyway, H2 for tests, and Oracle for
+the default and production profiles.
 
-## Arquitetura
-
-O projeto foi refatorado para uma estrutura **MVSC (Model, View, Service, Controller)**, mantendo a persistência isolada em repositórios e infraestrutura.
-
-```text
-controller
-    ↓
-service
-    ↓
-model
-    ↑
-repository ← infrastructure/persistence
-```
-
-### Responsabilidades
-
-- **Model**: entidades JPA e regras invariantes do domínio. Não conhece HTTP, DTOs ou Spring MVC.
-- **View**: objetos de entrada e saída da API (`Request` / `Response`). Não contém regra de negócio.
-- **Service**: casos de uso, orquestração, validações e transações.
-- **Controller**: somente HTTP: recebe requests, valida entrada, chama o service e define status HTTP.
-- **Repository**: contratos de persistência.
-- **Infrastructure**: implementações Spring Data JPA dos repositories.
-- **Exception**: exceções de negócio e recurso não encontrado.
-- **Config**: configurações técnicas, como `Clock` injetável.
-
-## Estrutura
+## Architecture
 
 ```text
-src/main/java/br/com/fiap/reservas/
-├── config/
-│   └── TimeConfig.java
-├── controller/
-│   ├── ApiExceptionHandler.java
-│   ├── EquipamentoController.java
-│   ├── ProfessorController.java
-│   ├── ReservaController.java
-│   └── SalaController.java
-├── exception/
-│   ├── RecursoNaoEncontradoException.java
-│   └── RegraNegocioException.java
-├── infrastructure/
-│   └── persistence/
-│       ├── JpaEquipamentoRepository.java
-│       ├── JpaProfessorRepository.java
-│       ├── JpaReservaRepository.java
-│       └── JpaSalaRepository.java
-├── model/
-│   ├── Equipamento.java
-│   ├── Professor.java
-│   ├── Reserva.java
-│   ├── ReservaStatus.java
-│   └── Sala.java
-├── repository/
-│   ├── EquipamentoRepository.java
-│   ├── ProfessorRepository.java
-│   ├── ReservaRepository.java
-│   └── SalaRepository.java
-├── service/
-│   ├── EquipamentoService.java
-│   ├── EquipamentoServiceImpl.java
-│   ├── ProfessorService.java
-│   ├── ProfessorServiceImpl.java
-│   ├── ReservaService.java
-│   ├── ReservaServiceImpl.java
-│   ├── SalaService.java
-│   └── SalaServiceImpl.java
-└── view/
-    ├── request/
-    │   ├── EquipamentoRequest.java
-    │   ├── ProfessorRequest.java
-    │   ├── ReservaRequest.java
-    │   └── SalaRequest.java
-    └── response/
-        ├── EquipamentoResponse.java
-        ├── ErrorResponse.java
-        ├── ProfessorResponse.java
-        ├── ReservaResponse.java
-        └── SalaResponse.java
+presentation -> application -> domain
+infrastructure -> application and domain
 ```
 
-## Boas práticas aplicadas
+The domain contains plain Java models, repository ports, exceptions, and reusable
+policies. It has no Spring or JPA imports. Application use cases expose input ports,
+use DTO records and invoke domain ports. Infrastructure contains JPA entities,
+Spring Data repositories, adapters, configuration, and ProblemDetail handling.
+Controllers depend only on application input ports and DTOs.
 
-- Controllers separados por recurso e responsabilidade.
-- Nenhum controller acessa repository diretamente.
-- Services separados por caso de uso/domínio.
-- Interfaces de service para favorecer DIP e testabilidade.
-- Entidades não são expostas diretamente pela API.
-- Requests e Responses separados das entidades JPA.
-- Validação de entrada com Bean Validation.
-- Regras invariantes mantidas no Model.
-- Regras de aplicação centralizadas nos Services.
-- Injeção de dependências por construtor.
-- Métodos pequenos e com responsabilidade única.
-- Sem setters públicos nas entidades.
-- Alteração de status do equipamento através de comportamento (`ativar` / `desativar`).
-- Transações declaradas no Service.
-- `Clock` injetado para tornar regras de tempo determinísticas e testáveis.
-- Tratamento global e padronizado de exceções.
-- Conflitos de sala/equipamento resolvidos na camada de persistência através de queries específicas.
-- Testes unitários para as principais regras da reserva.
+## Packages
 
-## Endpoints
-
-### Professores
-
-`POST /professores`
-
-```json
-{
-  "nome": "Maria Souza",
-  "email": "maria@fiap.com.br"
-}
+```text
+br.com.fiap.reservas
+├── domain
+│   ├── model
+│   ├── exception
+│   ├── repository
+│   └── service
+├── application
+│   ├── usecase/port/in
+│   ├── usecase/port/out
+│   ├── dto/request
+│   ├── dto/response
+│   └── mapper
+├── infrastructure
+│   ├── persistence/entity
+│   ├── persistence/repository
+│   ├── persistence/adapter
+│   ├── config
+│   └── exception
+└── presentation/controller
 ```
 
-`GET /professores`
+All request and response DTOs are Java records. Domain and JPA models are separate.
 
-`GET /professores/{id}`
+## Business Rules
 
-### Salas
+- A reservation requires a professor, course, room, date, valid time range, and at least one equipment item.
+- The reservation must be at least seven days in advance. Exactly seven days is accepted.
+- Pickup must be strictly before return; adjacent reservations do not overlap.
+- Equipment must be active.
+- Equipment and rooms cannot be double-booked in an overlapping `[pickup, return)` window.
+- Business failures identify the specific rule and resource in an RFC 7807 response.
 
-`POST /salas`
+## API
 
-```json
-{
-  "nome": "205"
-}
-```
+Professor endpoints:
 
-`GET /salas`
+- `POST /professores`
+- `GET /professores`
+- `GET /professores/{id}`
 
-`GET /salas/{id}`
+Room endpoints:
 
-### Equipamentos
+- `POST /salas`
+- `GET /salas`
+- `GET /salas/{id}`
 
-`POST /equipamentos`
+Equipment endpoints:
 
-```json
-{
-  "nome": "Caixa de Som 01",
-  "tipo": "Caixa de som",
-  "ativo": true
-}
-```
+- `POST /equipamentos`
+- `GET /equipamentos`
+- `GET /equipamentos/{id}`
+- `PATCH /equipamentos/{id}/status?ativo=true|false`
 
-`GET /equipamentos`
+Reservation endpoints:
 
-`GET /equipamentos/{id}`
+- `POST /reservas`
+- `GET /reservas`
+- `GET /reservas/{id}`
+- `DELETE /reservas/{id}`
 
-`PATCH /equipamentos/{id}/status?ativo=false`
-
-### Reservas
-
-`POST /reservas`
+Example reservation request:
 
 ```json
 {
@@ -167,113 +93,116 @@ src/main/java/br/com/fiap/reservas/
 }
 ```
 
-`GET /reservas`
+Legacy equipment ID requests map each item to quantity one. The domain and
+persistence model support quantities through `reserva_equipamento.quantidade`.
+New clients may send the quantity-aware form instead:
 
-`GET /reservas/{id}`
-
-## Regras de negócio
-
-- Reserva exige no mínimo 7 dias de antecedência.
-- Retirada deve ser anterior à entrega.
-- Reserva precisa de pelo menos um equipamento.
-- Equipamento precisa estar ativo.
-- Um equipamento não pode ser reservado em períodos sobrepostos.
-- Uma sala não pode possuir reservas em períodos sobrepostos.
-- Reservas que apenas encostam no limite do intervalo não conflitam.
-
-## Execução
-
-Requisitos:
-
-- Java 21
-- Maven 3.9+ ou Maven Wrapper
-
-Linux/macOS:
-
-```bash
-./mvnw spring-boot:run
+```json
+"equipamentos": [
+  {"equipamentoId": 1, "quantidade": 2}
+]
 ```
+
+## Error Responses
+
+The global handler returns `application/problem+json` with `type`, `title`, `status`,
+`detail`, `instance` when available, and rule-specific properties such as
+`missingDays` or `equipment`.
+
+- `400`: request shape, malformed JSON, or invalid time range.
+- `404`: referenced resource does not exist.
+- `409`: availability conflict, inactive equipment, minimum advance notice, duplicate data, or invalid reservation state.
+
+## Database Profiles
+
+The default and `prod` profiles use Oracle. For the local Docker Compose database,
+set these environment variables:
+
+```text
+ORACLE_DB_URL=jdbc:oracle:thin:@localhost:1521/XEPDB1
+ORACLE_DB_USERNAME=RESERVAS
+ORACLE_DB_PASSWORD=the_value_from_.env
+```
+
+For an external Oracle installation, use its actual service name, username, and
+password instead.
+
+`.env.example` contains the variable names without secrets. Never commit a real
+`.env` file or credentials.
+
+The `test` profile uses an in-memory H2 database. Flyway runs
+`db/migration/h2` for tests and `db/migration/oracle` for production. The scripts
+are separate where Oracle and H2 require different identity, boolean, and varchar
+syntax. Hibernate runs in `validate` mode in both profiles.
+
+## Docker Compose
+
+The local Compose stack runs the API and Oracle XE. It uses
+`gvenzl/oracle-xe:21-slim-faststart`, the slim/fast-start Oracle XE image, with a
+named volume for database data.
+
+```powershell
+Copy-Item .env.example .env
+docker compose up --build
+```
+
+The API is available at `http://localhost:8080`. Oracle is available from the host
+at `localhost:1521/XEPDB1`. The API waits for the Oracle health check before starting.
+
+Stop the stack while preserving data:
+
+```powershell
+docker compose down
+```
+
+Remove the database volume and start from an empty schema:
+
+```powershell
+docker compose down -v
+```
+
+The `.env` file is ignored by Git. Change the sample development passwords before
+using the stack outside a disposable local environment.
+
+## Run
 
 Windows:
 
 ```powershell
+$env:SPRING_PROFILES_ACTIVE="test"
 mvnw.cmd spring-boot:run
 ```
 
-Testes:
+Linux/macOS:
 
 ```bash
-./mvnw test
+SPRING_PROFILES_ACTIVE=test ./mvnw spring-boot:run
 ```
 
-## H2
+Run tests:
 
-Console: `http://localhost:8080/h2-console`
-
-- JDBC URL: `jdbc:h2:mem:reservas`
-- User: `sa`
-- Password: vazio
-
-## Oracle
-
-O projeto mantém o perfil Oracle em:
-
-`src/main/resources/application-oracle.properties`
-
-Execute com:
-
-```bash
-./mvnw spring-boot:run -Dspring-boot.run.profiles=oracle
+```powershell
+mvnw.cmd test
 ```
 
-Ajuste URL, usuário e senha conforme o ambiente.
+Run the Oracle HTTP integration tests from IntelliJ by loading the Oracle
+environment variables and adding `RUN_ORACLE_INTEGRATION_TESTS=true` to the test
+configuration. From PowerShell, set the same variables in the process and run:
 
-## Resultado da refatoração
-
-A antiga concentração de operações em `CadastroController` e `CadastroApplicationService` foi removida.
-
-Agora cada recurso possui seu próprio fluxo:
-
-```text
-ProfessorController → ProfessorService → ProfessorRepository
-SalaController      → SalaService      → SalaRepository
-EquipamentoController → EquipamentoService → EquipamentoRepository
-ReservaController   → ReservaService   → ReservaRepository
+```powershell
+$env:RUN_ORACLE_INTEGRATION_TESTS="true"
+mvnw.cmd -Dtest=OracleApiIntegrationTest test
 ```
 
-Isso reduz acoplamento, facilita testes, manutenção e evolução individual de cada recurso.
+The Oracle suite is disabled during the normal test run and creates uniquely
+named local test data in the configured schema.
 
-## Swagger / OpenAPI
+## API Documentation
 
-A API possui documentação OpenAPI integrada por meio do Springdoc.
-
-### Acesso
-
-- Swagger UI: `http://localhost:8080/swagger-ui/index.html`
+- Swagger UI: `http://localhost:8080/swagger-ui.html`
 - OpenAPI JSON: `http://localhost:8080/v3/api-docs`
-- Console H2: `http://localhost:8080/h2-console`
 
-### Documentação disponível
+## Verification
 
-A documentação está organizada por recurso e descreve:
-
-- objetivo de cada endpoint;
-- parâmetros de rota e query parameters;
-- corpo de requisição e seus campos obrigatórios;
-- exemplos de payloads;
-- modelos de request e response;
-- códigos HTTP esperados;
-- formato padronizado de erros;
-- regras de negócio relevantes para criação de reservas.
-
-### Abertura automática
-
-Ao iniciar a aplicação localmente, o sistema tenta abrir automaticamente o Swagger UI no navegador padrão em `/swagger-ui/index.html`.
-
-Esse comportamento pode ser desativado com:
-
-```properties
-app.swagger.auto-open=false
-```
-
-A abertura automática é tolerante a ambientes sem interface gráfica: se o navegador não estiver disponível, a aplicação continua iniciando normalmente.
+The normal test suite includes pure domain tests, Mockito use-case tests, H2
+controller integration tests, and `CleanArchitectureTest` ArchUnit rules.
