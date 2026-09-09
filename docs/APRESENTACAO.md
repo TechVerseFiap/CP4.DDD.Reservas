@@ -1,50 +1,50 @@
-# Roteiro da apresentação — até 10 minutos
+# Presentation Guide - Clean Architecture
 
-## 1. Problema — 1 min
-A instituição precisa permitir que professores reservem equipamentos para aulas sem conflitos de equipamento, sala e horário.
+## 1. Problem
 
-## 2. Arquitetura — 1,5 min
-A solução foi organizada com inspiração em DDD:
-- `domain`: entidades e portas de persistência;
-- `application`: casos de uso e validações;
-- `infrastructure`: implementação JPA dos repositórios;
-- `web`: REST controllers e tratamento de erros.
+The API allows professors to reserve rooms and equipment for academic classes
+without overlapping reservations.
 
-## 3. Entidades — 1 min
-- Professor
-- Sala
-- Equipamento
-- Reserva
+## 2. Architecture
 
-Reserva é o agregado central: possui professor, curso, sala, intervalo de horário e um ou vários equipamentos.
+The project uses four explicit layers:
 
-## 4. Fluxo de reserva — 1 min
-1. Cliente envia POST `/reservas`.
-2. Application Service carrega professor, sala e equipamentos.
-3. Valida antecedência, horários, status do equipamento e conflitos.
-4. Se tudo estiver correto, cria a Reserva e persiste.
-5. Se houver erro, API devolve 400/404 com mensagem clara.
+- `domain`: framework-free entities, value objects, exceptions, repository ports, and business policies;
+- `application`: records, mappers, use-case input ports, outbound ports, and orchestration;
+- `infrastructure`: JPA entities, Spring Data repositories, adapters, Flyway, configuration, and error handling;
+- `presentation`: REST controllers that depend only on application ports and DTOs.
 
-## 5. Regras de negócio — 2 min
-- Mínimo de 7 dias de antecedência.
-- Retirada < entrega.
-- Equipamento precisa estar ativo.
-- Equipamento não pode estar em outra reserva sobreposta.
-- Sala não pode estar em outra reserva sobreposta.
+The dependency direction points inward. ArchUnit verifies this relationship and
+rejects framework dependencies from the domain.
 
-## 6. Testes — 1,5 min
-JUnit + Mockito cobrem:
-- reserva válida;
-- antecedência insuficiente;
-- equipamento inativo;
-- conflito de equipamento;
-- conflito de sala;
-- horário inválido no agregado.
+## 3. Reservation Flow
 
-## 7. Melhorias — 1 min
-1. Transformação da API de Produtos em um domínio de reservas.
-2. Centralização das regras no caso de uso/agregado, evitando regras espalhadas no controller.
-3. Tratamento padronizado de erros e testes automatizados.
+1. The controller validates request shape with Bean Validation.
+2. The create-reservation use case builds a domain `TimeWindow`.
+3. The domain policy checks the seven-day advance notice.
+4. The use case loads professor, room, and equipment through domain repository ports.
+5. The reservation aggregate checks required values and active equipment.
+6. One reusable availability checker evaluates room and equipment windows.
+7. The persistence adapter maps the domain aggregate to separate JPA entities.
+8. The controller returns a response record without exposing JPA entities.
 
-## 8. Desafio — 1 min
-O principal desafio foi modelar e validar conflitos de intervalos de tempo sem colocar as regras diretamente nos controllers.
+## 4. Error Handling
+
+`GlobalExceptionHandler` returns RFC 7807 `ProblemDetail` responses:
+
+- HTTP 400 for request shape and invalid time ranges;
+- HTTP 404 for missing resources;
+- HTTP 409 for availability, advance-notice, inactive-equipment, and persistence conflicts.
+
+Each domain rule has a specific machine-readable type and human-readable detail.
+
+## 5. Persistence
+
+Flyway owns the schema. `test` uses H2 migrations and the default/`prod` profiles
+use Oracle migrations. Oracle connection values are supplied through environment
+variables. JPA is configured only to validate the migrated schema.
+
+## 6. Tests
+
+The suite includes framework-free domain rule tests, Mockito use-case tests, H2
+MockMvc integration tests, and the ArchUnit `CleanArchitectureTest`.

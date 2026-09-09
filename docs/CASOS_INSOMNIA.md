@@ -1,28 +1,38 @@
-# Casos para testar no Insomnia
+# API Scenarios
 
-## 1. Cadastrar professor
-POST http://localhost:8080/cadastros/professores
+## 1. Create a professor
+
+`POST /professores`
 
 ```json
 {"nome":"Maria Souza","email":"maria@fiap.com.br"}
 ```
 
-## 2. Cadastrar sala
-POST http://localhost:8080/cadastros/salas
+Expected status: `201 Created`.
+
+## 2. Create a room
+
+`POST /salas`
 
 ```json
 {"nome":"205"}
 ```
 
-## 3. Cadastrar equipamento
-POST http://localhost:8080/cadastros/equipamentos
+Expected status: `201 Created`.
+
+## 3. Create an equipment item
+
+`POST /equipamentos`
 
 ```json
 {"nome":"Caixa de Som 01","tipo":"Caixa de som","ativo":true}
 ```
 
-## 4. Reserva válida
-POST http://localhost:8080/reservas
+Expected status: `201 Created`.
+
+## 4. Create a valid reservation
+
+`POST /reservas`
 
 ```json
 {
@@ -31,21 +41,45 @@ POST http://localhost:8080/reservas
   "salaId": 1,
   "retirada": "2026-09-20T18:30:00",
   "entrega": "2026-09-20T22:30:00",
-  "equipamentosIds": [1,2,4,5]
+  "equipamentosIds": [1, 2]
 }
 ```
 
-## 5. Menos de 7 dias
-Altere `retirada` para uma data que esteja a menos de uma semana do momento da execução. Esperado: HTTP 400.
+Expected status: `201 Created`.
 
-## 6. Equipamento inativo
-Use `PATCH /cadastros/equipamentos/3/status?ativo=false` e tente reservá-lo. Esperado: HTTP 400.
+## 5. Less than seven days
 
-## 7. Conflito de equipamento
-Crie uma reserva para `equipamentosIds: [1]` e depois outra reserva sobrepondo o horário e usando o mesmo equipamento. Esperado: HTTP 400.
+Send a `retirada` before the seven-day boundary. Expected status: `409 Conflict`
+with type `minimum-advance-not-met` and a `missingDays` property.
 
-## 8. Conflito de sala
-Crie duas reservas na mesma sala com horários sobrepostos. Esperado: HTTP 400.
+## 6. Inactive equipment
 
-## 9. Horário inválido
-Envie `retirada` posterior ou igual a `entrega`. Esperado: HTTP 400.
+Deactivate an item with `PATCH /equipamentos/{id}/status?ativo=false`, then use
+it in a reservation. Expected status: `409 Conflict` with type
+`inactive-equipment` and the equipment name in the response.
+
+## 7. Equipment conflict
+
+Create a reservation, then create another reservation with the same equipment and
+an overlapping window. Expected status: `409 Conflict` with type
+`equipment-unavailable`.
+
+## 8. Room conflict
+
+Create two reservations in the same room with overlapping windows. Expected status:
+`409 Conflict` with type `room-unavailable`.
+
+## 9. Invalid time range
+
+Send equal or reversed `retirada` and `entrega` values. Expected status: `400 Bad
+Request` with type `invalid-time-range`.
+
+## 10. Missing resource
+
+Request `GET /professores/99999`. Expected status: `404 Not Found` with type
+`resource-not-found`.
+
+## 11. Request validation
+
+Send a professor without a name or with an invalid email. Expected status:
+`400 Bad Request` with field-level errors in the ProblemDetail `errors` property.

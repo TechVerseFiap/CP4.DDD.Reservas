@@ -1,21 +1,56 @@
 package br.com.fiap.reservas.domain.model;
 
-import jakarta.persistence.*;
-import lombok.*;
+import br.com.fiap.reservas.domain.exception.MissingReservationDataException;
 
-@Entity
-@Table(name = "equipamentos")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class Equipamento {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+public final class Equipamento {
 
-    @Column(nullable = false, unique = true, length = 120)
-    private String nome;
+    private final Long id;
+    private final String nome;
+    private final String tipo;
+    private boolean ativo;
 
-    @Column(nullable = false, length = 80)
-    private String tipo;
+    private Equipamento(Long id, String nome, String tipo, boolean ativo) {
+        if (nome == null || nome.isBlank()) {
+            throw new MissingReservationDataException("Nome do equipamento e obrigatorio");
+        }
+        if (tipo == null || tipo.isBlank()) {
+            throw new MissingReservationDataException("Tipo do equipamento e obrigatorio");
+        }
+        this.id = id;
+        this.nome = nome.trim();
+        this.tipo = tipo.trim();
+        this.ativo = ativo;
+    }
 
-    @Column(nullable = false)
-    private Boolean ativo = true;
+    public static Equipamento criar(String nome, String tipo, boolean ativo) {
+        return new Equipamento(null, nome, tipo, ativo);
+    }
+
+    public static Equipamento reconstituir(Long id, String nome, String tipo, boolean ativo) {
+        return new Equipamento(id, nome, tipo, ativo);
+    }
+
+    public void ativar() {
+        ativo = true;
+    }
+
+    public void desativar() {
+        ativo = false;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public String getNome() {
+        return nome;
+    }
+
+    public String getTipo() {
+        return tipo;
+    }
+
+    public boolean isAtivo() {
+        return ativo;
+    }
 }

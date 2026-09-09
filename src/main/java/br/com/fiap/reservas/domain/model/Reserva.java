@@ -1,57 +1,165 @@
 package br.com.fiap.reservas.domain.model;
 
-import jakarta.persistence.*;
-import lombok.*;
+import br.com.fiap.reservas.domain.exception.InactiveEquipmentException;
+import br.com.fiap.reservas.domain.exception.MissingReservationDataException;
+import br.com.fiap.reservas.domain.exception.ReservationAlreadyCancelledException;
+
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
-@Entity
-@Table(name = "reservas")
-@Getter @NoArgsConstructor
-public class Reserva {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+public final class Reserva {
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    private Professor professor;
-
-    @Column(nullable = false, length = 120)
-    private String curso;
-
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    private Sala sala;
-
-    @Column(nullable = false)
-    private LocalDateTime retirada;
-
-    @Column(nullable = false)
-    private LocalDateTime entrega;
-
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(name = "reserva_equipamento",
-        joinColumns = @JoinColumn(name = "reserva_id"),
-        inverseJoinColumns = @JoinColumn(name = "equipamento_id"))
-    private Set<Equipamento> equipamentos = new HashSet<>();
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    private final Long id;
+    private final Professor professor;
+    private final Curso curso;
+    private final Sala sala;
+    private final TimeWindow timeWindow;
+    private final Set<ReservedEquipment> itensEquipamento;
     private ReservaStatus status;
 
-    public Reserva(Professor professor, String curso, Sala sala,
-                   LocalDateTime retirada, LocalDateTime entrega,
-                   Set<Equipamento> equipamentos) {
-        if (professor == null) throw new IllegalArgumentException("Professor é obrigatório");
-        if (curso == null || curso.isBlank()) throw new IllegalArgumentException("Curso é obrigatório");
-        if (sala == null) throw new IllegalArgumentException("Sala é obrigatória");
-        if (retirada == null || entrega == null) throw new IllegalArgumentException("Horários são obrigatórios");
-        if (!retirada.isBefore(entrega)) throw new IllegalArgumentException("Horário de retirada deve ser anterior ao horário de entrega");
-        if (equipamentos == null || equipamentos.isEmpty()) throw new IllegalArgumentException("Ao menos um equipamento deve ser reservado");
+    private Reserva(
+            Long id,
+            Professor professor,
+            Curso curso,
+            Sala sala,
+            TimeWindow timeWindow,
+            Collection<ReservedEquipment> itensEquipamento,
+            ReservaStatus status
+    ) {
+        if (professor == null) {
+            throw new MissingReservationDataException("Professor e obrigatorio");
+        }
+        if (curso == null) {
+            throw new MissingReservationDataException("Curso e obrigatorio");
+        }
+        if (sala == null) {
+            throw new MissingReservationDataException("Sala e obrigatoria");
+        }
+        if (timeWindow == null) {
+            throw new MissingReservationDataException("Data e horarios da reserva sao obrigatorios");
+        }
+        if (itensEquipamento == null || itensEquipamento.isEmpty()) {
+            throw new MissingReservationDataException("Ao menos um equipamento deve ser reservado");
+        }
+
+        List<String> inactive = itensEquipamento.stream()
+                .map(ReservedEquipment::equipamento)
+                .filter(equipment -> !equipment.isAtivo())
+                .map(Equipamento::getNome)
+                .toList();
+        if (!inactive.isEmpty()) {
+            throw new InactiveEquipmentException(inactive);
+        }
+
+        this.id = id;
         this.professor = professor;
-        this.curso = curso.trim();
+        this.curso = curso;
         this.sala = sala;
-        this.retirada = retirada;
-        this.entrega = entrega;
-        this.equipamentos = new HashSet<>(equipamentos);
-        this.status = ReservaStatus.CONFIRMADA;
+        this.timeWindow = timeWindow;
+        this.itensEquipamento = new LinkedHashSet<>(itensEquipamento);
+        this.status = status == null ? ReservaStatus.CONFIRMADA : status;
+    }
+
+    public static Reserva criar(
+            Professor professor,
+            String curso,
+            Sala sala,
+            LocalDateTime retirada,
+            LocalDateTime entrega,
+            Collection<Equipamento> equipamentos
+    ) {
+        if (equipamentos == null) {
+            return new Reserva(
+                    null, professor,
+                    new Curso(curso),
+                    sala,
+                    new TimeWindow(retirada, entrega),
+                    null,
+                    ReservaStatus.CONFIRMADA
+            );
+        }
+        return criar(
+                professor,
+                new Curso(curso),
+                sala,
+                new TimeWindow(retirada, entrega),
+                equipamentos.stream().map(equipment -> new ReservedEquipment(equipment, 1)).toList()
+        );
+    }
+
+    public static Reserva criar(
+            Professor professor,
+            Curso curso,
+            Sala sala,
+            TimeWindow timeWindow,
+            Collection<ReservedEquipment> equipamentos
+    ) {
+        return new Reserva(null, professor, curso, sala, timeWindow, equipamentos, ReservaStatus.CONFIRMADA);
+    }
+
+    public static Reserva reconstituir(
+            Long id,
+            Professor professor,
+            Curso curso,
+            Sala sala,
+            TimeWindow timeWindow,
+            Collection<ReservedEquipment> equipamentos,
+            ReservaStatus status
+    ) {
+        return new Reserva(id, professor, curso, sala, timeWindow, equipamentos, status);
+    }
+
+    public void cancelar() {
+        if (status == ReservaStatus.CANCELADA) {
+            throw new ReservationAlreadyCancelledException();
+        }
+        status = ReservaStatus.CANCELADA;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public Professor getProfessor() {
+        return professor;
+    }
+
+    public String getCurso() {
+        return curso.nome();
+    }
+
+    public Curso getCursoValue() {
+        return curso;
+    }
+
+    public Sala getSala() {
+        return sala;
+    }
+
+    public LocalDateTime getRetirada() {
+        return timeWindow.pickup();
+    }
+
+    public LocalDateTime getEntrega() {
+        return timeWindow.returnTime();
+    }
+
+    public TimeWindow getTimeWindow() {
+        return timeWindow;
+    }
+
+    public Set<Equipamento> getEquipamentos() {
+        return itensEquipamento.stream().map(ReservedEquipment::equipamento).collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    public Set<ReservedEquipment> getItensEquipamento() {
+        return Set.copyOf(itensEquipamento);
+    }
+
+    public ReservaStatus getStatus() {
+        return status;
     }
 }
