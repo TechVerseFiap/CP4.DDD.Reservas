@@ -47,8 +47,6 @@ public class ReservaServiceImpl implements ReservaService {
         Sala sala = buscarSala(request.salaId());
         Set<Equipamento> equipamentos = buscarEValidarEquipamentos(request);
 
-        validarConflitoSala(sala, request);
-
         Reserva reserva = Reserva.criar(
                 professor,
                 request.curso(),
@@ -57,6 +55,7 @@ public class ReservaServiceImpl implements ReservaService {
                 request.entrega(),
                 equipamentos);
 
+        validarConflitoSala(sala, request);
         return toResponse(reservaRepository.save(reserva));
     }
 
