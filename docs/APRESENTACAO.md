@@ -1,50 +1,77 @@
-# Roteiro da apresentação — até 10 minutos
+# Roteiro da apresentação — arquitetura MVSC
 
-## 1. Problema — 1 min
+## 1. Problema
+
 A instituição precisa permitir que professores reservem equipamentos para aulas sem conflitos de equipamento, sala e horário.
 
-## 2. Arquitetura — 1,5 min
-A solução foi organizada com inspiração em DDD:
-- `domain`: entidades e portas de persistência;
-- `application`: casos de uso e validações;
-- `infrastructure`: implementação JPA dos repositórios;
-- `web`: REST controllers e tratamento de erros.
+## 2. Arquitetura
 
-## 3. Entidades — 1 min
-- Professor
-- Sala
-- Equipamento
-- Reserva
+O projeto foi organizado em MVSC:
 
-Reserva é o agregado central: possui professor, curso, sala, intervalo de horário e um ou vários equipamentos.
+- `model`: entidades e invariantes do domínio;
+- `view`: requests e responses da API;
+- `service`: casos de uso, regras de aplicação e transações;
+- `controller`: entrada HTTP e códigos de resposta;
+- `repository`: contratos de persistência;
+- `infrastructure`: implementação JPA;
+- `exception`: erros de negócio;
+- `config`: configurações técnicas.
 
-## 4. Fluxo de reserva — 1 min
-1. Cliente envia POST `/reservas`.
-2. Application Service carrega professor, sala e equipamentos.
-3. Valida antecedência, horários, status do equipamento e conflitos.
-4. Se tudo estiver correto, cria a Reserva e persiste.
-5. Se houver erro, API devolve 400/404 com mensagem clara.
+## 3. Separação por responsabilidade
 
-## 5. Regras de negócio — 2 min
-- Mínimo de 7 dias de antecedência.
-- Retirada < entrega.
-- Equipamento precisa estar ativo.
-- Equipamento não pode estar em outra reserva sobreposta.
-- Sala não pode estar em outra reserva sobreposta.
+Cada recurso possui seu próprio controller e service:
 
-## 6. Testes — 1,5 min
-JUnit + Mockito cobrem:
+- `ProfessorController` → `ProfessorService`
+- `SalaController` → `SalaService`
+- `EquipamentoController` → `EquipamentoService`
+- `ReservaController` → `ReservaService`
+
+Assim, não existe mais um controller genérico responsável por vários recursos.
+
+## 4. Fluxo de reserva
+
+1. Cliente envia `POST /reservas`.
+2. `ReservaController` valida o request.
+3. `ReservaService` carrega professor, sala e equipamentos.
+4. O service valida antecedência e conflitos.
+5. `Reserva` valida suas próprias invariantes.
+6. O repository persiste a entidade.
+7. O service devolve `ReservaResponse`.
+8. O controller retorna HTTP 201.
+
+## 5. Clean Code e SOLID
+
+- Responsabilidade única por classe.
+- Inversão de dependência através das interfaces de service e repository.
+- Controllers sem regra de negócio.
+- Services sem preocupação com detalhes HTTP.
+- Model sem dependência da camada web.
+- DTOs impedem exposição direta das entidades.
+- Dependências injetadas por construtor.
+- Métodos pequenos e nomeados de acordo com sua intenção.
+- `Clock` injetável para regras de data e testes determinísticos.
+
+## 6. Tratamento de erros
+
+`ApiExceptionHandler` centraliza:
+
+- HTTP 400 para validação e regras de negócio;
+- HTTP 404 para recursos inexistentes;
+- HTTP 409 para violações de unicidade/persistência.
+
+A API utiliza o mesmo formato de resposta de erro.
+
+## 7. Testes
+
+Os testes unitários cobrem:
+
 - reserva válida;
 - antecedência insuficiente;
 - equipamento inativo;
 - conflito de equipamento;
 - conflito de sala;
-- horário inválido no agregado.
+- horário inválido no Model.
 
-## 7. Melhorias — 1 min
-1. Transformação da API de Produtos em um domínio de reservas.
-2. Centralização das regras no caso de uso/agregado, evitando regras espalhadas no controller.
-3. Tratamento padronizado de erros e testes automatizados.
+## 8. Resultado
 
-## 8. Desafio — 1 min
-O principal desafio foi modelar e validar conflitos de intervalos de tempo sem colocar as regras diretamente nos controllers.
+A refatoração reduz acoplamento e torna cada parte do sistema evolutiva de forma independente, sem misturar responsabilidades de HTTP, negócio, persistência e representação de dados.
